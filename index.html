@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Maze World Pro</title>
+<style>
+  :root {
+    --neon: #00ffcc;
+    --bg: #111;
+    --player: #ff0055;
+    --wall: #444;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--bg);
+    color: var(--neon);
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  /* ГЛАВНОЕ МЕНЮ */
+  #menuOverlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.95); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100;
+  }
+
+  .levels-grid {
+    display: grid; grid-template-columns: repeat(5, 60px); gap: 15px; margin-top: 20px;
+  }
+
+  .level-card {
+    width: 60px; height: 60px; background: #222; border: 2px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border-radius: 12px; font-weight: bold; transition: 0.3s;
+  }
+
+  .level-card.unlocked { border-color: var(--neon); color: var(--neon); box-shadow: 0 0 10px rgba(0,255,204,0.2); }
+  .level-card.unlocked:hover { background: var(--neon); color: #000; box-shadow: 0 0 20px var(--neon); }
+  .level-card.locked { opacity: 0.2; cursor: not-allowed; filter: grayscale(1); }
+
+  /* ИГРОВОЙ ЭКРАН */
+  #gameScreen { display: none; flex-direction: column; align-items: center; width: 100%; height: 100vh; }
+  
+  .maze-container {
+    flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 10px;
+  }
+
+  .maze { display: grid; gap: 2px; background: #333; padding: 5px; border-radius: 8px; }
+  
+  .cell { width: 22px; height: 22px; }
+  .wall { background: linear-gradient(145deg, #222, #555); border-radius: 2px; }
+  .path { background: #000; }
+  .player { background: var(--player); border-radius: 50%; box-shadow: 0 0 10px var(--player); transform: scale(0.8); }
+  .finish { background: #00ff66; box-shadow: 0 0 15px #00ff66; animation: pulse 1.5s infinite; }
+
+  @keyframes pulse { 50% { opacity: 0.4; } }
+
+  /* УПРАВЛЕНИЕ ДЛЯ ТЕЛЕФОНА */
+  .mobile-controls {
+    display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 20px;
+  }
+  .row { display: flex; gap: 8px; }
+  .joy-btn {
+    width: 65px; height: 65px; background: rgba(255,255,255,0.05);
+    border: 2px solid var(--neon); color: var(--neon); font-size: 24px;
+    border-radius: 15px; display: flex; align-items: center; justify-content: center;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .joy-btn:active { background: var(--neon); color: #000; }
+
+  /* КНОПКИ И ТЕКСТ */
+  button#nextBtn {
+    position: absolute; bottom: 100px; padding: 15px 30px; 
+    background: #00ff66; color: #000; border: none; border-radius: 10px; 
+    font-weight: bold; display: none; z-index: 10;
+  }
+  .top-bar { width: 100%; display: flex; justify-content: space-between; padding: 10px 20px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+
+<div id="menuOverlay">
+  <h1 style="text-shadow: 0 0 20px var(--neon); letter-spacing: 5px;">MAZE GAME</h1>
+  <div class="levels-grid" id="levelsGrid"></div>
+  <p style="margin-top: 30px; font-size: 0.8em; color: #555;">ПРОЙДИ ВСЕ 10 УРОВНЕЙ</p>
+</div>
+
+<div id="gameScreen">
+  <div class="top-bar">
+    <button onclick="showMenu()" style="background:none; border: 1px solid; color:var(--neon); border-radius: 5px;">🏠 МЕНЮ</button>
+    <div id="levelText">УРОВЕНЬ 1</div>
+    <div id="timer" style="color:#ffcc00">00:00</div>
+  </div>
+
+  <div class="maze-container">
+    <div class="maze" id="maze"></div>
+  </div>
+
+  <button id="nextBtn">ДАЛЬШЕ ➡️</button>
+
+  <div class="mobile-controls">
+    <div class="row"><div class="joy-btn" id="upBtn">▲</div></div>
+    <div class="row">
+      <div class="joy-btn" id="leftBtn">◀</div>
+      <div class="joy-btn" id="downBtn">▼</div>
+      <div class="joy-btn" id="rightBtn">▶</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const levels = [
+  ["########","#  F   #","# ######","#      #","########"],
+  ["##########","#      #F#","# #### # #","#      # #","###### # #","#        #","##########"],
+  ["##############","#            #","# ### # #### #","# #   #    # #","# # ###### # #","# #      # # #","# ###### # # #","#      # #   #","###### # #####","#    #       #","# ## # ##### #","#          # #","#F######## # #","##############"],
+  ["##############","#    #       #","# ####  #### #","# #        # #","# # ###### # #","# #      # # #","# ###### # # #","#      # # F #","###### # #####","#    # #     #","# ## # ##### #","#    #     # #","# ########   #","##############"],
+  ["##########","#F#      #","# # #### #","# # #    #","# # # ####","# # #    #","# # #### #","#        #","##########"],
+  ["##############","#            #","# ########## #","# #        # #","# # ###### # #","# # #F   # # #","# # #### # # #","# #      # # #","# ######## # #","#          # #","##############"],
+  ["################","#     #        #","# ### # ###### #","# #   # #    # #","# # ### # ## # #","# #     # #  # #","# ####### # ## #","#       # #    #","# ##### # ######","# #F  # #      #","# # ### ########","# #            #","################"],
+  ["##########","#   #    #","# # # ## #","# # #  # #","# # ## # #","# #    # #","# ###### #","#F       #","##########"],
+  ["###############","#             #","# ########### #","# #         # #","# # ####### # #","# # #     # # #","# # # #F# # # #","# # # ### # # #","# # #     # # #","# # ####### # #","# #         # #","# ########### #","#             #","###############"],
+  ["####################","#                  #","# ################ #","# #              # #","# # ############ # #","# # #          # # #","# # # ######## # # #","# # # #      # # # #","# # # # #### # # # #","# #   # # F# # # # #","# ### # #  # # # # #","# #   # #### # # # #","# # ####     # # # #","# #      ##### # # #","# ######       # # #","#        ####### # #","################ # #","#                  #","####################"]
+];
+
+let currentLevel = 0;
+let unlockedLevels = parseInt(localStorage.getItem('mazeGame_unlocked')) || 1;
+let playerPos = {x:1, y:1};
+let timerInterval = null;
+let timeLeft = 0;
+
+function drawMenu() {
+    const grid = document.getElementById("levelsGrid");
+    grid.innerHTML = "";
+    for(let i=0; i<10; i++) {
+        const card = document.createElement("div");
+        card.className = `level-card ${i < unlockedLevels ? 'unlocked' : 'locked'}`;
+        card.innerText = i < unlockedLevels ? i + 1 : "🔒";
+        if(i < unlockedLevels) card.onclick = () => startLevel(i);
+        grid.appendChild(card);
+    }
+}
+
+function startLevel(idx) {
+    currentLevel = idx;
+    playerPos = {x:1, y:1};
+    document.getElementById("menuOverlay").style.display = "none";
+    document.getElementById("gameScreen").style.display = "flex";
+    document.getElementById("nextBtn").style.display = "none";
+    document.getElementById("levelText").innerText = "УРОВЕНЬ " + (idx + 1);
+    drawMaze();
+    startTimer();
+}
+
+function startTimer() {
+    clearInterval(timerInterval);
+    timeLeft = 25 + (currentLevel * 10);
+    const timerEl = document.getElementById("timer");
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        timerEl.innerText = "ВРЕМЯ: " + timeLeft;
+        if(timeLeft <= 0) {
+            clearInterval(timerInterval);
+            alert("ВРЕМЯ ВЫШЛО! 💀");
+            startLevel(currentLevel);
+        }
+    }, 1000);
+}
+
+function drawMaze() {
+    const maze = document.getElementById("maze");
+    maze.innerHTML = "";
+    const map = levels[currentLevel];
+    maze.style.gridTemplateColumns = `repeat(${map[0].length}, 22px)`;
+    map.forEach((row, y) => {
+        row.split("").forEach((cell, x) => {
+            const div = document.createElement("div");
+            div.className = "cell " + (cell==="#"?"wall":"path");
+            if(cell==="F") div.classList.add("finish");
+            if(x===playerPos.x && y===playerPos.y) div.classList.add("player");
+            maze.appendChild(div);
+        });
+    });
+}
+
+function move(dx, dy) {
+    const map = levels[currentLevel];
+    let newX = playerPos.x + dx;
+    let newY = playerPos.y + dy;
+    
+    if(map[newY] && map[newY][newX] && map[newY][newX] !== "#") {
+        playerPos.x = newX;
+        playerPos.y = newY;
+        if(map[newY][newX] === "F") {
+            clearInterval(timerInterval);
+            document.getElementById("nextBtn").style.display = "block";
+            if(currentLevel + 1 >= unlockedLevels && unlockedLevels < 10) {
+                unlockedLevels = currentLevel + 2;
+                localStorage.setItem('mazeGame_unlocked', unlockedLevels);
+            }
+        }
+        drawMaze();
+    }
+}
+
+// Кнопки управления
+document.getElementById("upBtn").onclick = () => move(0, -1);
+document.getElementById("downBtn").onclick = () => move(0, 1);
+document.getElementById("leftBtn").onclick = () => move(-1, 0);
+document.getElementById("rightBtn").onclick = () => move(1, 0);
+
+document.addEventListener("keydown", (e) => {
+    if(e.key === "ArrowUp") move(0, -1);
+    if(e.key === "ArrowDown") move(0, 1);
+    if(e.key === "ArrowLeft") move(-1, 0);
+    if(e.key === "ArrowRight") move(1, 0);
+});
+
+document.getElementById("nextBtn").onclick = () => {
+    if(currentLevel < 9) startLevel(currentLevel + 1);
+    else { alert("ВЫ ПРОШЛИ ВСЕ УРОВНИ! 🏆"); showMenu(); }
+};
+
+function showMenu() {
+    clearInterval(timerInterval);
+    document.getElementById("menuOverlay").style.display = "flex";
+    document.getElementById("gameScreen").style.display = "none";
+    drawMenu();
+}
+
+drawMenu();
+</script>
+</body>
+</html>
